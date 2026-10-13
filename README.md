@@ -78,6 +78,19 @@ flowchart TD
 
 ---
 
+## Flagship Portfolio Projects (Deep-Dive Suites)
+
+For multi-hour execution and publication-ready public portfolio assets, explore the [`flagship_projects/`](file:///Users/jack/workspace/ai-infra/flagship_projects) directory:
+
+1. **[Frontier Inference Benchmark Teardown](file:///Users/jack/workspace/ai-infra/flagship_projects/01_frontier_inference_teardown)**: Concurrency scaling (1 to 256), context length sweeps, and interactive Chart.js Pareto curves (`pareto_curve.html`).
+2. **[Custom Triton FlashAttention-2 & FP8 Suite](file:///Users/jack/workspace/ai-infra/flagship_projects/02_triton_flash_attention_fp8)**: Online softmax scaling, SRAM block tiling, and Nsight Compute (`ncu`) roofline profiling.
+3. **[Disaggregated Prefill/Decode Cluster Fabric](file:///Users/jack/workspace/ai-infra/flagship_projects/03_disaggregated_prefill_decode_fabric)**: Dedicated P-worker and D-worker cluster with asynchronous KV-cache streaming fabric.
+4. **[Pre-Training & Model FLOPs Utilization (MFU) Run](file:///Users/jack/workspace/ai-infra/flagship_projects/04_pretraining_mfu_optimization_run)**: 1B Transformer pretraining with PyTorch 2.0 `torch.compile` & Chrome trace timeline export.
+
+Each flagship project includes a dedicated **`PLAYBOOK.md`** with exact hardware sizing, credit burn breakdown, and publishing templates.
+
+---
+
 ## Quickstart & Execution
 
 ### 1. Colab Session Management
