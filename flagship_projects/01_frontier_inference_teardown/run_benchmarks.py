@@ -147,7 +147,7 @@ def main():
     parser = argparse.ArgumentParser(description="Frontier Inference Engine Benchmark")
     parser.add_argument("--gpu-cost", type=float, default=3.50, help="Hourly cloud GPU rate (USD)")
     parser.add_argument("--output-json", type=str, default="benchmark_results.json", help="Path to save JSON metrics")
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"=================================================================")
