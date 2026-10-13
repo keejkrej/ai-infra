@@ -89,7 +89,7 @@ def _flash_attn_fwd_kernel(
     # Store output
     off_o = off_hz * stride_oh + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
     out_ptrs = Out + off_o
-    tl.store(out_ptrs, acc.to(Q.dtype), mask=offs_m[:, None] < N_CTX)
+    tl.store(out_ptrs, acc.to(q.dtype), mask=offs_m[:, None] < N_CTX)
 
 def triton_flash_attention_2(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, sm_scale: float = None) -> torch.Tensor:
     """

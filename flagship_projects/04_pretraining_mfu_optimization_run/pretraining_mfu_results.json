@@ -1,0 +1,22 @@
+{
+  "hardware": "NVIDIA A100-SXM4-40GB",
+  "peak_tflops": 312.0,
+  "eager": {
+    "compile": false,
+    "num_params_m": 637.86,
+    "batch_size": 8,
+    "seq_len": 1024,
+    "avg_step_ms": 204.27,
+    "sustained_tokens_per_sec": 40103.4,
+    "sustained_mfu_pct": 49.98
+  },
+  "compiled": {
+    "compile": true,
+    "num_params_m": 637.86,
+    "batch_size": 8,
+    "seq_len": 1024,
+    "avg_step_ms": 178.13,
+    "sustained_tokens_per_sec": 45987.6,
+    "sustained_mfu_pct": 56.41
+  }
+}

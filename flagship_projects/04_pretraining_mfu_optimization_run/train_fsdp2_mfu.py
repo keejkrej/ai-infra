@@ -1,10 +1,11 @@
 """
 Flagship Project 04: Large-Scale Pre-Training & MFU Optimization Engine
-Implements an end-to-end training and profiling pipeline for a 1B-scale Transformer model,
+Implements an end-to-end training and profiling pipeline for a Transformer model,
 measuring exact Model FLOPs Utilization (MFU), torch.compile kernel acceleration,
 and PyTorch Profiler / Chrome trace timelines on NVIDIA A100 GPU hardware.
 """
 
+import json
 import time
 import math
 import argparse
@@ -14,7 +15,7 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
-# Theoretical FP16 Tensor Core peak performance:
+# Theoretical FP16/BF16 Tensor Core peak performance:
 # NVIDIA A100-SXM4-40GB: 312 TFLOPs/s (without sparsity)
 A100_PEAK_FP16_TFLOPS = 312.0
 
@@ -59,10 +60,7 @@ def calculate_mfu(
 ) -> float:
     """
     Standard Chowdhery et al. (PaLM) / Kaplan et al. MFU formula:
-    FLOPs per token during training (forward + backward) approx = 6 * N_params
-    Total FLOPs per step = 6 * N_params * BatchTokens
-    Achieved TFLOPs = Total FLOPs / (step_time * 1e12)
-    MFU = Achieved TFLOPs / Peak TFLOPs
+    FLOPs per token during training (forward + backward) approx = 6 * N_params + 12 * L * H * D * seq_len
     """
     tokens_per_step = batch_size * seq_len
     flops_per_step = 6.0 * num_params * tokens_per_step
@@ -70,43 +68,34 @@ def calculate_mfu(
     mfu = (achieved_tflops / peak_tflops) * 100.0
     return mfu
 
-def run_pretraining_benchmark(steps: int = 25, compile_model: bool = False):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("=================================================================")
-    print(" FLAGSHIP 04: PRE-TRAINING MFU OPTIMIZATION BENCHMARK")
-    print(f" Hardware     : {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
-    print(f" Torch Compile: {compile_model}")
-    print("=================================================================")
-
-    batch_size = 4
-    seq_len = 1024
+def benchmark_mode(steps: int, compile_model: bool, device: torch.device, batch_size: int = 8, seq_len: int = 1024) -> dict:
     hidden_dim = 2048
     num_layers = 12
+    dtype = torch.bfloat16 if (device.type == "cuda" and torch.cuda.is_bf16_supported()) else torch.float16
 
-    # Instantiate model
-    model = PretrainingTransformerLM(vocab_size=8192, hidden_dim=hidden_dim, num_layers=num_layers).to(device=device, dtype=torch.float16)
-    num_params = sum(p.numel() for p in model.parameters())
-    print(f"Model Parameter Count: {num_params / 1e6:.1f} Million Parameters")
+    base_model = PretrainingTransformerLM(vocab_size=8192, hidden_dim=hidden_dim, num_layers=num_layers).to(device=device, dtype=dtype)
+    num_params = sum(p.numel() for p in base_model.parameters())
 
+    model = base_model
     if compile_model and hasattr(torch, "compile") and device.type == "cuda":
-        print("Compiling model graph via torch.compile(mode='reduce-overhead')...")
-        model = torch.compile(model, mode="reduce-overhead")
+        print("\n[*] Compiling model graph via torch.compile()...")
+        model = torch.compile(base_model)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.1)
+    optimizer = torch.optim.AdamW(base_model.parameters(), lr=1e-4, weight_decay=0.1, fused=(device.type == "cuda"))
 
     # Warmup
-    print("Executing warmup training steps...")
+    print(f"Executing warmup training steps (compile={compile_model})...")
     for _ in range(3):
         dummy_in = torch.randint(0, 8192, (batch_size, seq_len), device=device)
         dummy_targets = torch.randint(0, 8192, (batch_size, seq_len), device=device)
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         logits = model(dummy_in)
         loss = F.cross_entropy(logits.view(-1, 8192), dummy_targets.view(-1))
         loss.backward()
         optimizer.step()
 
     torch.cuda.synchronize(device) if device.type == "cuda" else None
-    print(f"\nBenchmarking {steps} Training Steps with MFU Monitoring...")
+    print(f"\nBenchmarking {steps} Training Steps (compile={compile_model})...")
     print(f"{'Step':<6} | {'Step Time':<12} | {'Tokens/sec':<14} | {'Loss':<10} | {'Model FLOPs Utilization (MFU)'}")
     print("-" * 80)
 
@@ -120,11 +109,11 @@ def run_pretraining_benchmark(steps: int = 25, compile_model: bool = False):
         torch.cuda.synchronize(device) if device.type == "cuda" else None
         t0 = time.perf_counter()
 
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         logits = model(x)
         loss = F.cross_entropy(logits.view(-1, 8192), y.view(-1))
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(base_model.parameters(), 1.0)
         optimizer.step()
 
         torch.cuda.synchronize(device) if device.type == "cuda" else None
@@ -141,20 +130,49 @@ def run_pretraining_benchmark(steps: int = 25, compile_model: bool = False):
 
     avg_step_ms = (sum(step_times) / len(step_times)) * 1000.0
     avg_mfu = sum(mfu_values) / len(mfu_values)
+    avg_tok_s = (batch_size * seq_len) / (avg_step_ms / 1000.0)
+
+    return {
+        "compile": compile_model,
+        "num_params_m": round(num_params / 1e6, 2),
+        "batch_size": batch_size,
+        "seq_len": seq_len,
+        "avg_step_ms": round(avg_step_ms, 2),
+        "sustained_tokens_per_sec": round(avg_tok_s, 1),
+        "sustained_mfu_pct": round(avg_mfu, 2),
+    }
+
+def run_pretraining_benchmark(steps: int = 15):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+    print("=================================================================")
+    print(" FLAGSHIP 04: PRE-TRAINING MFU OPTIMIZATION BENCHMARK")
+    print(f" Hardware     : {gpu_name}")
+    print("=================================================================")
+
+    eager_res = benchmark_mode(steps=steps, compile_model=False, device=device)
+    compiled_res = benchmark_mode(steps=steps, compile_model=True, device=device)
 
     print("\n" + "=" * 80)
-    print(" TRAINING HARDWARE EFFICIENCY SUMMARY")
+    print(" TRAINING HARDWARE EFFICIENCY SUMMARY (EAGER VS TORCH.COMPILE)")
     print("=" * 80)
-    print(f"Average Step Latency : {avg_step_ms:.1f} ms")
-    print(f"Sustained Throughput : {(batch_size * seq_len) / (avg_step_ms / 1000.0):.1f} tokens/second")
-    print(f"Sustained A100 MFU   : {avg_mfu:.2f}% (Industry standard target: 40-50%)")
+    print(f"Eager Execution    : {eager_res['avg_step_ms']:>6.1f} ms/step | {eager_res['sustained_tokens_per_sec']:>9.1f} tok/s | {eager_res['sustained_mfu_pct']:>5.2f}% MFU")
+    print(f"torch.compile()    : {compiled_res['avg_step_ms']:>6.1f} ms/step | {compiled_res['sustained_tokens_per_sec']:>9.1f} tok/s | {compiled_res['sustained_mfu_pct']:>5.2f}% MFU")
     print("=" * 80)
-    print("\n[AI Infra Insight]: Achieving >45% MFU requires eliminating host CPU overhead,")
-    print("fusing point-wise operators, and keeping Tensor Cores continuously fed with tokens.\n")
+    print("\n[AI Infra Insight]: Achieving high MFU requires eliminating host CPU overhead,")
+    print("fusing point-wise operators via TorchInductor, and keeping Tensor Cores continuously fed.\n")
+
+    results = {
+        "hardware": gpu_name,
+        "peak_tflops": A100_PEAK_FP16_TFLOPS,
+        "eager": eager_res,
+        "compiled": compiled_res,
+    }
+    with open("pretraining_mfu_results.json", "w") as f:
+        json.dump(results, f, indent=2)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--steps", type=int, default=15)
-    parser.add_argument("--compile", action="store_true")
-    args = parser.parse_args()
-    run_pretraining_benchmark(steps=args.steps, compile_model=args.compile)
+    args, _ = parser.parse_known_args()
+    run_pretraining_benchmark(steps=args.steps)

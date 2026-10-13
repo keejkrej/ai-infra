@@ -1,0 +1,68 @@
+[
+  {
+    "hardware": "NVIDIA A100-SXM4-40GB",
+    "batch_size": 2,
+    "num_heads": 16,
+    "head_dim": 64,
+    "seq_len": 512,
+    "pytorch_sdpa_ms": 0.0428,
+    "triton_fa2_ms": 0.0368,
+    "speedup": 1.163,
+    "triton_tflops_per_sec": 29.14
+  },
+  {
+    "hardware": "NVIDIA A100-SXM4-40GB",
+    "batch_size": 2,
+    "num_heads": 16,
+    "head_dim": 64,
+    "seq_len": 1024,
+    "pytorch_sdpa_ms": 0.0776,
+    "triton_fa2_ms": 0.0724,
+    "speedup": 1.072,
+    "triton_tflops_per_sec": 59.34
+  },
+  {
+    "hardware": "NVIDIA A100-SXM4-40GB",
+    "batch_size": 2,
+    "num_heads": 16,
+    "head_dim": 64,
+    "seq_len": 2048,
+    "pytorch_sdpa_ms": 0.1572,
+    "triton_fa2_ms": 0.1951,
+    "speedup": 0.806,
+    "triton_tflops_per_sec": 88.08
+  },
+  {
+    "hardware": "NVIDIA A100-SXM4-40GB",
+    "batch_size": 2,
+    "num_heads": 16,
+    "head_dim": 64,
+    "seq_len": 4096,
+    "pytorch_sdpa_ms": 0.4769,
+    "triton_fa2_ms": 0.6594,
+    "speedup": 0.723,
+    "triton_tflops_per_sec": 104.21
+  },
+  {
+    "hardware": "NVIDIA A100-SXM4-40GB",
+    "batch_size": 2,
+    "num_heads": 16,
+    "head_dim": 64,
+    "seq_len": 8192,
+    "pytorch_sdpa_ms": 1.6619,
+    "triton_fa2_ms": 2.4206,
+    "speedup": 0.687,
+    "triton_tflops_per_sec": 113.56
+  },
+  {
+    "hardware": "NVIDIA A100-SXM4-40GB",
+    "batch_size": 2,
+    "num_heads": 16,
+    "head_dim": 64,
+    "seq_len": 16384,
+    "pytorch_sdpa_ms": 6.3003,
+    "triton_fa2_ms": 9.3177,
+    "speedup": 0.676,
+    "triton_tflops_per_sec": 118.0
+  }
+]
